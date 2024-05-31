@@ -4,7 +4,8 @@
 EAPI=8
 
 DISTUTILS_OPTIONAL=1
-PYTHON_COMPAT=( python3_{10..11} )
+DISTUTILS_USE_PEP517=setuptools
+PYTHON_COMPAT=( python3_{10..12} )
 SCONS_MIN_VERSION="2.3.0"
 
 inherit distutils-r1 scons-utils systemd toolchain-funcs udev
@@ -20,7 +21,7 @@ fi
 DESCRIPTION="GPS daemon and library for USB/serial GPS devices and GPS/mapping clients"
 HOMEPAGE="https://gpsd.gitlab.io/gpsd/"
 
-LICENSE="BSD"
+LICENSE="BSD-2"
 SLOT="0/30"
 
 GPSD_PROTOCOLS=(
@@ -29,7 +30,7 @@ GPSD_PROTOCOLS=(
 	rtcm104v2 rtcm104v3 sirf skytraq superstar2 tnt tripmate tsip ublox
 )
 IUSE_GPSD_PROTOCOLS=${GPSD_PROTOCOLS[@]/#/+gpsd_protocols_}
-IUSE="${IUSE_GPSD_PROTOCOLS} bluetooth +cxx dbus debug ipv6 latency-timing ncurses ntp +python qt5 selinux +shm +sockets static systemd test udev usb X"
+IUSE="${IUSE_GPSD_PROTOCOLS} bluetooth +cxx dbus debug ipv6 latency-timing ncurses ntp +python qt5 selinux +shm static systemd test udev usb X"
 REQUIRED_USE="
 	X? ( python )
 	gpsd_protocols_nmea2000? ( gpsd_protocols_aivdm )
@@ -61,13 +62,14 @@ RDEPEND="
 		dev-qt/qtnetwork:5
 	)
 	python? ( ${PYTHON_DEPS} )
-	gpsd_protocols_ublox? ( dev-python/pyserial )
-	gpsd_protocols_greis? ( dev-python/pyserial )
+	gpsd_protocols_ublox? ( dev-python/pyserial[${PYTHON_USEDEP}] )
+	gpsd_protocols_greis? ( dev-python/pyserial[${PYTHON_USEDEP}] )
 	usb? ( virtual/libusb:1 )
 	X? ( dev-python/pygobject:3[cairo,${PYTHON_USEDEP}] )"
 DEPEND="${RDEPEND}"
 BDEPEND="virtual/pkgconfig
 	$(python_gen_any_dep 'dev-build/scons[${PYTHON_USEDEP}]')
+	python? ( ${DISTUTILS_DEPS} )
 	test? ( app-alternatives/bc )"
 RDEPEND+=" selinux? ( sec-policy/selinux-gpsd )"
 
@@ -77,7 +79,7 @@ if [[ ${PV} == *9999* ]] ; then
 fi
 
 python_check_deps() {
-	has_version -b "dev-build/scons[${PYTHON_USEDEP}]" || return 1
+	python_has_version -b "dev-build/scons[${PYTHON_USEDEP}]" || return 1
 }
 
 src_prepare() {
@@ -168,7 +170,7 @@ src_configure() {
 		$(usex python python_libdir="${EPREFIX}"/python-discard "")
 		qt=$(usex qt5)
 		shm_export=$(usex shm)
-		socket_export=$(usex sockets)
+		socket_export=True # Required, see bug #900891
 		usb=$(usex usb)
 	)
 
@@ -208,6 +210,13 @@ src_test() {
 python_test() {
 	# Silence QA check which gets confused by layout(?). We do run the tests.
 	:;
+}
+
+python_install(){
+	mkdir "${T}/scripts" || die
+	grep -Rl "${D}/usr/bin" -e "/usr/bin/env python" | xargs mv -t "${T}/scripts"
+	python_doscript "${T}"/scripts/*
+	distutils-r1_python_install
 }
 
 src_install() {
